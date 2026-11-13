@@ -19,9 +19,27 @@ export type KitchenSocketOrderPayload = {
   };
 };
 
+export type KitchenSocketServiceCallPayload = {
+  event: string;
+  occurredAt: string;
+  restaurantId: string;
+  call: {
+    id: string;
+    tableId: string;
+    tableNumber: number;
+    reason: 'CHANGE_ORDER' | 'CANCEL_ORDER' | 'CLOSE_BILL';
+    message: string | null;
+    status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+    relatedOrderId: string | null;
+    createdAt: string;
+  };
+};
+
 type Options = {
   onOrderCreated?: (payload: KitchenSocketOrderPayload) => void;
   onOrderUpdated?: (payload: KitchenSocketOrderPayload) => void;
+  onServiceCallCreated?: (payload: KitchenSocketServiceCallPayload) => void;
+  onServiceCallUpdated?: (payload: KitchenSocketServiceCallPayload) => void;
 };
 
 export function useKitchenSocket(options: Options = {}) {
@@ -70,6 +88,31 @@ export function useKitchenSocket(options: Options = {}) {
     socket.on('kitchen.order.updated', (payload: KitchenSocketOrderPayload) => {
       optionsRef.current.onOrderUpdated?.(payload);
     });
+
+    socket.on(
+      'kitchen.service_call.created',
+      (payload: KitchenSocketServiceCallPayload) => {
+        notifyNewQueued(1);
+        const reason =
+          payload.call.reason === 'CANCEL_ORDER'
+            ? 'cancelar pedido'
+            : payload.call.reason === 'CLOSE_BILL'
+              ? 'fechar conta'
+              : 'alterar pedido';
+        message.warning({
+          content: `Mesa ${payload.call.tableNumber} chamou atendente · ${reason}`,
+          duration: 6,
+        });
+        optionsRef.current.onServiceCallCreated?.(payload);
+      },
+    );
+
+    socket.on(
+      'kitchen.service_call.updated',
+      (payload: KitchenSocketServiceCallPayload) => {
+        optionsRef.current.onServiceCallUpdated?.(payload);
+      },
+    );
 
     return () => {
       socket.removeAllListeners();

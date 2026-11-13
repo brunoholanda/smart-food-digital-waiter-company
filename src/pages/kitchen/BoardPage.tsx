@@ -1,26 +1,41 @@
 import { Button, Spin, Tag, Tooltip } from 'antd';
 import { RefreshCw, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { EditOrderModal } from '../../components/kitchen/EditOrderModal';
 import { KanbanColumn } from '../../components/kitchen/KanbanColumn';
+import { ServiceCallsPanel } from '../../components/kitchen/ServiceCallsPanel';
+import { SettleBillModal } from '../../components/kitchen/SettleBillModal';
 import { StatsBar } from '../../components/kitchen/StatsBar';
 import { useKitchenOrders } from '../../hooks/useKitchenOrders';
+import type { KitchenOrder } from '../../types';
 
 export function BoardPage() {
   const {
     byStatus,
+    serviceCalls,
+    highlightedTableNumbers,
     stats,
     loading,
     updatingId,
     flashIds,
+    callFlashIds,
     connected,
     refresh,
     updateStatus,
+    updateOrder,
+    updateServiceCall,
     soundEnabled,
     audioReady,
     toggleSound,
     unlockAudio,
   } = useKitchenOrders();
   const [refreshing, setRefreshing] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<KitchenOrder | null>(null);
+  const [focusTable, setFocusTable] = useState<number | null>(null);
+  const [settleTable, setSettleTable] = useState<{
+    tableId: string;
+    tableNumber: number;
+  } | null>(null);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -30,6 +45,17 @@ export function BoardPage() {
       setRefreshing(false);
     }
   };
+
+  const filteredByStatus = useMemo(() => {
+    if (focusTable == null) return byStatus;
+    const match = (order: KitchenOrder) =>
+      (order.tableNumber ?? order.table?.number) === focusTable;
+    return {
+      QUEUED: byStatus.QUEUED.filter(match),
+      PREPARING: byStatus.PREPARING.filter(match),
+      READY: byStatus.READY.filter(match),
+    };
+  }, [byStatus, focusTable]);
 
   if (loading) {
     return (
@@ -51,6 +77,16 @@ export function BoardPage() {
           >
             {connected ? 'Ao vivo' : 'Reconectando…'}
           </Tag>
+          {focusTable != null ? (
+            <Tag
+              color="warning"
+              closable
+              onClose={() => setFocusTable(null)}
+              style={{ marginInlineEnd: 0 }}
+            >
+              Filtrando mesa {focusTable}
+            </Tag>
+          ) : null}
           <Tooltip
             title={
               soundEnabled
@@ -86,35 +122,75 @@ export function BoardPage() {
         </div>
       </div>
 
+      <ServiceCallsPanel
+        calls={serviceCalls}
+        flashIds={callFlashIds}
+        updatingId={updatingId}
+        onAcknowledge={(id) => updateServiceCall(id, 'ACKNOWLEDGED')}
+        onResolve={(id) => updateServiceCall(id, 'RESOLVED')}
+        onFocusOrder={(_orderId, tableNumber) => setFocusTable(tableNumber)}
+        onSettleBill={(tableId, tableNumber) =>
+          setSettleTable({ tableId, tableNumber })
+        }
+      />
+
       <div className="kanban-board">
         <KanbanColumn
           title="Na fila"
           accent="queued"
-          count={byStatus.QUEUED.length}
-          orders={byStatus.QUEUED}
+          count={filteredByStatus.QUEUED.length}
+          orders={filteredByStatus.QUEUED}
           flashIds={flashIds}
+          highlightedTableNumbers={highlightedTableNumbers}
           updatingId={updatingId}
           onUpdateStatus={updateStatus}
+          onEditOrder={setEditingOrder}
         />
         <KanbanColumn
           title="Preparando"
           accent="preparing"
-          count={byStatus.PREPARING.length}
-          orders={byStatus.PREPARING}
+          count={filteredByStatus.PREPARING.length}
+          orders={filteredByStatus.PREPARING}
           flashIds={flashIds}
+          highlightedTableNumbers={highlightedTableNumbers}
           updatingId={updatingId}
           onUpdateStatus={updateStatus}
+          onEditOrder={setEditingOrder}
         />
         <KanbanColumn
           title="Pronto"
           accent="ready"
-          count={byStatus.READY.length}
-          orders={byStatus.READY}
+          count={filteredByStatus.READY.length}
+          orders={filteredByStatus.READY}
           flashIds={flashIds}
+          highlightedTableNumbers={highlightedTableNumbers}
           updatingId={updatingId}
           onUpdateStatus={updateStatus}
+          onEditOrder={setEditingOrder}
         />
       </div>
+
+      <EditOrderModal
+        open={Boolean(editingOrder)}
+        order={editingOrder}
+        saving={updatingId === editingOrder?.id}
+        onClose={() => setEditingOrder(null)}
+        onSave={async (payload) => {
+          if (!editingOrder) return;
+          await updateOrder(editingOrder.id, payload);
+          setEditingOrder(null);
+        }}
+      />
+
+      <SettleBillModal
+        open={Boolean(settleTable)}
+        tableId={settleTable?.tableId ?? null}
+        tableNumber={settleTable?.tableNumber}
+        onClose={() => setSettleTable(null)}
+        onSettled={() => {
+          void refresh(true);
+        }}
+      />
     </div>
   );
 }

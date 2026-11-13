@@ -1,5 +1,5 @@
 import { App, Button, Typography } from 'antd';
-import { Check, Flame, PackageCheck, X } from 'lucide-react';
+import { Check, Flame, PackageCheck, Pencil, X } from 'lucide-react';
 import type { KitchenOrder, KitchenStatus } from '../../types';
 import {
   formatCurrency,
@@ -11,15 +11,19 @@ import { ElapsedTime } from './ElapsedTime';
 interface OrderCardProps {
   order: KitchenOrder;
   flashing?: boolean;
+  highlighted?: boolean;
   updating?: boolean;
   onUpdateStatus: (orderId: string, status: KitchenStatus) => Promise<void>;
+  onEditOrder?: (order: KitchenOrder) => void;
 }
 
 export function OrderCard({
   order,
   flashing = false,
+  highlighted = false,
   updating = false,
   onUpdateStatus,
+  onEditOrder,
 }: OrderCardProps) {
   const { modal } = App.useApp();
   const mesa = order.tableNumber ?? order.table?.number;
@@ -38,7 +42,11 @@ export function OrderCard({
   };
 
   return (
-    <article className={`order-card${flashing ? ' is-flashing' : ''}`}>
+    <article
+      className={`order-card${flashing ? ' is-flashing' : ''}${
+        highlighted ? ' is-call-highlight' : ''
+      }`}
+    >
       <header className="order-card-header">
         <div className="order-mesa">
           <span className="order-mesa-label">Mesa</span>
@@ -49,6 +57,10 @@ export function OrderCard({
           <ElapsedTime from={order.queuedAt} />
         </div>
       </header>
+
+      {highlighted ? (
+        <div className="order-call-badge">Chamado da mesa · alterar ou cancelar</div>
+      ) : null}
 
       {(order.customerName || order.paymentMethod) && (
         <div className="order-submeta">
@@ -93,6 +105,16 @@ export function OrderCard({
       <footer className="order-card-footer">
         <span className="order-total">{formatCurrency(order.total)}</span>
         <div className="order-actions">
+          {status === 'QUEUED' || status === 'PREPARING' || status === 'READY' ? (
+            <Button
+              size="large"
+              icon={<Pencil size={16} />}
+              disabled={updating}
+              onClick={() => onEditOrder?.(order)}
+            >
+              Alterar
+            </Button>
+          ) : null}
           {status === 'QUEUED' ? (
             <Button
               type="primary"

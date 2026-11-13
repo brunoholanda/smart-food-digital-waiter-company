@@ -1,15 +1,19 @@
 import {
+  Alert,
   Button,
+  Checkbox,
   Drawer,
   Empty,
   Input,
   InputNumber,
+  Modal,
   Result,
   Tag,
   Typography,
   message,
 } from 'antd';
 import {
+  BellRing,
   CheckCircle2,
   Clock3,
   CreditCard,
@@ -31,12 +35,16 @@ import * as publicApi from '../api/public';
 import * as tablesApi from '../api/tables';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { SiteFooter } from '../components/SiteFooter';
+import { TableStatusCard } from '../components/TableStatusCard';
 import type {
   MenuItem,
   Order,
   PaymentMethod,
   PublicTableContext,
   Restaurant,
+  ServiceCallReason,
+  TableBill,
+  TableStatus,
 } from '../types';
 import { cuisineLabel } from '../utils/cuisine';
 import {
@@ -59,7 +67,7 @@ interface CartLine {
   addonNames?: string[];
 }
 
-type CheckoutStep = 'cart' | 'checkout' | 'pay' | 'success';
+type CheckoutStep = 'cart' | 'checkout' | 'review' | 'pay' | 'success';
 
 export function PublicMenuPage() {
   const { slug = '', tableCode } = useParams();
@@ -78,12 +86,37 @@ export function PublicMenuPage() {
   const [customerName, setCustomerName] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [itemsConfirmed, setItemsConfirmed] = useState(false);
+  const [payConfirmed, setPayConfirmed] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
   const [paidOrder, setPaidOrder] = useState<Order | null>(null);
+  const [attendantOpen, setAttendantOpen] = useState(false);
+  const [attendantReason, setAttendantReason] =
+    useState<ServiceCallReason>('CHANGE_ORDER');
+  const [attendantMessage, setAttendantMessage] = useState('');
+  const [callingAttendant, setCallingAttendant] = useState(false);
+  const [attendantCalled, setAttendantCalled] = useState(false);
+  const [closeBillOpen, setCloseBillOpen] = useState(false);
+  const [closeBillLoading, setCloseBillLoading] = useState(false);
+  const [tableBill, setTableBill] = useState<TableBill | null>(null);
+  const [closingBill, setClosingBill] = useState(false);
+  const [tableStatus, setTableStatus] = useState<TableStatus | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const tableOrdering =
     Boolean(tableCode) && Boolean(tableCtx) && !tableInvalid;
+  const payAtTable =
+    tableOrdering && tableCtx?.paymentCollectionMode === 'RESTAURANT_TABLE';
+
+  const refreshTableStatus = async (silent = true) => {
+    if (!tableCode || !slug) return;
+    try {
+      const status = await ordersApi.getPublicTableStatus(slug, tableCode);
+      setTableStatus(status);
+    } catch {
+      if (!silent) setTableStatus(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -110,6 +143,8 @@ export function PublicMenuPage() {
           } else {
             setTableCtx(table);
           }
+        } else {
+          setTableStatus(null);
         }
       } catch {
         if (active) setNotFound(true);
@@ -122,6 +157,18 @@ export function PublicMenuPage() {
       active = false;
     };
   }, [slug, tableCode]);
+
+  useEffect(() => {
+    if (!tableOrdering || !tableCode) {
+      setTableStatus(null);
+      return;
+    }
+    void refreshTableStatus(true);
+    const id = window.setInterval(() => {
+      void refreshTableStatus(true);
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [tableOrdering, tableCode, slug]);
 
   const featured = useMemo(
     () =>
@@ -256,6 +303,8 @@ export function PublicMenuPage() {
 
   const openCheckout = () => {
     setCheckoutStep('cart');
+    setItemsConfirmed(false);
+    setPayConfirmed(false);
     setDrawerOpen(true);
   };
 
@@ -277,11 +326,56 @@ export function PublicMenuPage() {
         })),
       });
       setPendingOrder(order);
-      setCheckoutStep('pay');
+      if (payAtTable) {
+        setPaidOrder(order);
+        setCart([]);
+        setCheckoutStep('success');
+        void refreshTableStatus(true);
+      } else {
+        setPayConfirmed(false);
+        setCheckoutStep('pay');
+      }
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Não foi possível criar o pedido'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openCloseBill = async () => {
+    if (!tableCtx) return;
+    setCloseBillOpen(true);
+    setCloseBillLoading(true);
+    try {
+      const bill = await ordersApi.getPublicTableBill(slug, tableCtx.table.code);
+      setTableBill(bill);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Não foi possível carregar a conta'));
+      setCloseBillOpen(false);
+    } finally {
+      setCloseBillLoading(false);
+    }
+  };
+
+  const requestCloseBill = async () => {
+    if (!tableCtx) return;
+    setClosingBill(true);
+    try {
+      await ordersApi.createServiceCall({
+        restaurantSlug: slug,
+        tableCode: tableCtx.table.code,
+        reason: 'CLOSE_BILL',
+        message: attendantMessage.trim() || 'Cliente pediu para fechar a conta',
+      });
+      setAttendantCalled(true);
+      setCloseBillOpen(false);
+      setAttendantMessage('');
+      message.success('Atendente chamado para fechar a conta');
+      void refreshTableStatus(true);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Não foi possível chamar o atendente'));
+    } finally {
+      setClosingBill(false);
     }
   };
 
@@ -293,6 +387,7 @@ export function PublicMenuPage() {
       setPaidOrder(paid);
       setCart([]);
       setCheckoutStep('success');
+      void refreshTableStatus(true);
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Pagamento não concluído'));
     } finally {
@@ -307,6 +402,30 @@ export function PublicMenuPage() {
     setPaidOrder(null);
     setCustomerName('');
     setOrderNotes('');
+    setItemsConfirmed(false);
+    setPayConfirmed(false);
+  };
+
+  const callAttendant = async () => {
+    if (!tableCtx) return;
+    setCallingAttendant(true);
+    try {
+      await ordersApi.createServiceCall({
+        restaurantSlug: slug,
+        tableCode: tableCtx.table.code,
+        reason: attendantReason,
+        message: attendantMessage.trim() || undefined,
+        relatedOrderId: paidOrder?.id,
+      });
+      setAttendantCalled(true);
+      setAttendantOpen(false);
+      setAttendantMessage('');
+      message.success('Atendente chamado · aguarde na mesa');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Não foi possível chamar o atendente'));
+    } finally {
+      setCallingAttendant(false);
+    }
   };
 
   if (loading) return <LoadingScreen tip="Abrindo cardápio..." />;
@@ -342,7 +461,7 @@ export function PublicMenuPage() {
   const wa = restaurant.whatsapp || restaurant.phone;
   const today = new Date().getDay();
   const todayHours = restaurant.openingHours?.find((h) => h.dayOfWeek === today);
-  const bottomPad = tableOrdering ? 118 : 96;
+  const bottomPad = tableOrdering ? 168 : 96;
 
   return (
     <div className="sf-page" style={{ background: 'var(--sf-cream)', paddingBottom: bottomPad }}>
@@ -437,11 +556,43 @@ export function PublicMenuPage() {
 
           {tableOrdering ? (
             <div className="sf-order-hint">
-              <span className="sf-order-hint__badge">Pedido na mesa</span>
+              <span className="sf-order-hint__badge">
+                {payAtTable ? 'Conta na mesa' : 'Pedido na mesa'}
+              </span>
               <p>
                 Use <strong>+</strong> para adicionar. Toque no nome do item para ver detalhes
                 e observações.
+                {payAtTable
+                  ? ' Os pedidos vão direto para a cozinha e o pagamento é feito ao fechar a conta.'
+                  : ' O pagamento é feito ao finalizar cada pedido. Para alterar ou cancelar, chame o atendente.'}
               </p>
+              <div className="sf-order-hint__actions">
+                <Button
+                  className="sf-call-attendant"
+                  icon={<BellRing size={16} />}
+                  onClick={() => {
+                    setAttendantReason('CHANGE_ORDER');
+                    setAttendantOpen(true);
+                  }}
+                >
+                  {attendantCalled ? 'Chamar novamente' : 'Chamar atendente'}
+                </Button>
+                {payAtTable ? (
+                  <Button
+                    type="primary"
+                    className="sf-call-attendant"
+                    onClick={() => void openCloseBill()}
+                  >
+                    Fechar conta
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {tableOrdering && tableStatus ? (
+            <div style={{ marginTop: 14 }}>
+              <TableStatusCard status={tableStatus} />
             </div>
           ) : null}
         </div>
@@ -624,7 +775,29 @@ export function PublicMenuPage() {
       ) : null}
 
       {tableOrdering ? (
-        <div className="sf-cart-bar">
+        <div className="sf-cart-bar sf-cart-bar--with-call">
+          <div className="sf-cart-bar__calls">
+            <button
+              type="button"
+              className="sf-cart-bar__call"
+              onClick={() => {
+                setAttendantReason('CHANGE_ORDER');
+                setAttendantOpen(true);
+              }}
+            >
+              <BellRing size={16} />
+              <span>{attendantCalled ? 'Chamar de novo' : 'Chamar atendente'}</span>
+            </button>
+            {payAtTable ? (
+              <button
+                type="button"
+                className="sf-cart-bar__call sf-cart-bar__call--bill"
+                onClick={() => void openCloseBill()}
+              >
+                <span>Fechar conta</span>
+              </button>
+            ) : null}
+          </div>
           {cartCount > 0 ? (
             <button type="button" className="sf-cart-bar__inner" onClick={openCheckout}>
               <div className="sf-cart-bar__left">
@@ -635,7 +808,8 @@ export function PublicMenuPage() {
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>Ver pedido</div>
                   <div style={{ fontSize: 12, opacity: 0.78 }}>
-                    Mesa {tableCtx?.table.number} · toque para finalizar
+                    Mesa {tableCtx?.table.number} ·{' '}
+                    {payAtTable ? 'envia à cozinha' : 'toque para pagar'}
                   </div>
                 </div>
               </div>
@@ -644,11 +818,121 @@ export function PublicMenuPage() {
           ) : (
             <div className="sf-cart-bar__empty">
               <ShoppingBag size={18} />
-              <span>Adicione itens com + · o total aparece aqui</span>
+              <span>
+                {payAtTable
+                  ? 'Adicione itens com + · feche a conta quando terminar'
+                  : 'Adicione itens com + · ou chame o atendente para alterar/cancelar'}
+              </span>
             </div>
           )}
         </div>
       ) : null}
+
+      <Modal
+        open={attendantOpen}
+        onCancel={() => setAttendantOpen(false)}
+        title="Chamar atendente"
+        centered
+        okText="Chamar agora"
+        cancelText="Fechar"
+        confirmLoading={callingAttendant}
+        onOk={() => void callAttendant()}
+      >
+        <Typography.Paragraph type="secondary">
+          Use este chamado para alterar ou cancelar um pedido já enviado. A equipe vê o
+          aviso na cozinha e atende na mesa.
+        </Typography.Paragraph>
+        <div className="sf-attendant-reasons">
+          <button
+            type="button"
+            className={`sf-attendant-reason${
+              attendantReason === 'CHANGE_ORDER' ? ' is-active' : ''
+            }`}
+            onClick={() => setAttendantReason('CHANGE_ORDER')}
+          >
+            Alterar pedido
+          </button>
+          <button
+            type="button"
+            className={`sf-attendant-reason${
+              attendantReason === 'CANCEL_ORDER' ? ' is-active' : ''
+            }`}
+            onClick={() => setAttendantReason('CANCEL_ORDER')}
+          >
+            Cancelar pedido
+          </button>
+        </div>
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          Mensagem opcional
+        </Typography.Text>
+        <Input.TextArea
+          value={attendantMessage}
+          onChange={(e) => setAttendantMessage(e.target.value)}
+          rows={3}
+          maxLength={240}
+          placeholder="Ex.: quero trocar o suco por refrigerante"
+          style={{ marginTop: 6 }}
+        />
+      </Modal>
+
+      <Modal
+        open={closeBillOpen}
+        onCancel={() => setCloseBillOpen(false)}
+        title="Fechar conta"
+        centered
+        okText="Chamar atendente"
+        cancelText="Voltar"
+        confirmLoading={closingBill}
+        onOk={() => void requestCloseBill()}
+        okButtonProps={{ disabled: closeBillLoading || (tableBill?.openOrderCount ?? 0) === 0 }}
+      >
+        {closeBillLoading ? (
+          <Typography.Paragraph>Carregando conta da mesa...</Typography.Paragraph>
+        ) : tableBill ? (
+          <div>
+            <Typography.Paragraph>
+              Mesa <strong>{tableBill.tableNumber}</strong> ·{' '}
+              {tableBill.openOrderCount} pedido(s) em aberto
+            </Typography.Paragraph>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontWeight: 700,
+                fontSize: 18,
+                marginBottom: 12,
+              }}
+            >
+              <span>Total a pagar</span>
+              <span style={{ color: 'var(--sf-coral)' }}>
+                {formatCurrency(tableBill.total)}
+              </span>
+            </div>
+            {tableBill.orders.map((order) => (
+              <div
+                key={order.id}
+                style={{
+                  padding: '10px 0',
+                  borderTop: '1px solid var(--sf-border)',
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {order.code} · {formatCurrency(order.total)}
+                </div>
+                {order.items.map((item) => (
+                  <div key={item.id} style={{ color: 'var(--sf-text-muted)' }}>
+                    {item.quantity}× {item.name}
+                  </div>
+                ))}
+              </div>
+            ))}
+            <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+              O atendente vem até a mesa, confere o valor e recebe o pagamento.
+            </Typography.Paragraph>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* Item detail drawer */}
       <Drawer
@@ -807,9 +1091,11 @@ export function PublicMenuPage() {
             ? 'Pedido enviado'
             : checkoutStep === 'pay'
               ? 'Pagamento'
-              : checkoutStep === 'checkout'
-                ? 'Finalizar pedido'
-                : 'Seu pedido'
+              : checkoutStep === 'review'
+                ? 'Conferir pedido'
+                : checkoutStep === 'checkout'
+                  ? 'Finalizar pedido'
+                  : 'Seu pedido'
         }
         styles={{
           body: { paddingBottom: 24 },
@@ -936,10 +1222,100 @@ export function PublicMenuPage() {
                 type="primary"
                 style={{ flex: 2 }}
                 size="large"
+                onClick={() => {
+                  setItemsConfirmed(false);
+                  setCheckoutStep('review');
+                }}
+              >
+                Revisar itens
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {checkoutStep === 'review' ? (
+          <div>
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 14, borderRadius: 12 }}
+              message="Confira com atenção"
+              description={
+                payAtTable
+                  ? 'Depois de confirmar, o pedido vai direto para a cozinha. Verifique quantidades, itens e observações.'
+                  : 'Depois de confirmar, você seguirá para o pagamento. Verifique quantidades, itens e observações antes de continuar.'
+              }
+            />
+            {tableCtx ? (
+              <Tag style={{ marginBottom: 12 }}>Mesa {tableCtx.table.number}</Tag>
+            ) : null}
+            {customerName.trim() ? (
+              <Typography.Paragraph style={{ marginBottom: 8 }}>
+                Nome: <strong>{customerName.trim()}</strong>
+              </Typography.Paragraph>
+            ) : null}
+            {orderNotes.trim() ? (
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                Obs.: {orderNotes.trim()}
+              </Typography.Paragraph>
+            ) : null}
+
+            <div className="sf-order-review-list">
+              {cart.map((line) => (
+                <div key={line.key} className="sf-order-review-item">
+                  <div className="sf-order-review-item__main">
+                    <strong>
+                      {line.quantity}× {line.name}
+                    </strong>
+                    {line.notes ? <span>{line.notes}</span> : null}
+                  </div>
+                  <div className="sf-order-review-item__price">
+                    {formatCurrency(line.unitPrice * line.quantity)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                margin: '14px 0',
+                fontWeight: 700,
+                fontSize: 16,
+              }}
+            >
+              <span>Total</span>
+              <span style={{ color: 'var(--sf-coral)' }}>{formatCurrency(cartTotal)}</span>
+            </div>
+
+            <Checkbox
+              checked={itemsConfirmed}
+              onChange={(e) => setItemsConfirmed(e.target.checked)}
+              style={{ marginBottom: 16 }}
+            >
+              Confirmei os itens, quantidades e observações do pedido
+            </Checkbox>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                style={{ flex: 1 }}
+                onClick={() => {
+                  setItemsConfirmed(false);
+                  setCheckoutStep('checkout');
+                }}
+              >
+                Voltar
+              </Button>
+              <Button
+                type="primary"
+                style={{ flex: 2 }}
+                size="large"
                 loading={submitting}
+                disabled={!itemsConfirmed}
                 onClick={() => void submitOrder()}
               >
-                Confirmar pedido
+                {payAtTable ? 'Enviar à cozinha' : 'Confirmar e pagar'}
               </Button>
             </div>
           </div>
@@ -947,10 +1323,42 @@ export function PublicMenuPage() {
 
         {checkoutStep === 'pay' && pendingOrder ? (
           <div>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 14, borderRadius: 12 }}
+              message="Última conferência antes do pagamento"
+              description="Revise os itens abaixo. Só avance se estiver tudo certo."
+            />
             <Typography.Paragraph>
               Pedido <strong>{pendingOrder.code}</strong> ·{' '}
               {formatCurrency(pendingOrder.total)}
             </Typography.Paragraph>
+
+            <div className="sf-order-review-list" style={{ marginBottom: 12 }}>
+              {(pendingOrder.items ?? []).map((item) => (
+                <div key={item.id} className="sf-order-review-item">
+                  <div className="sf-order-review-item__main">
+                    <strong>
+                      {item.quantity}× {item.name}
+                    </strong>
+                    {item.notes ? <span>{item.notes}</span> : null}
+                  </div>
+                  <div className="sf-order-review-item__price">
+                    {formatCurrency(item.lineTotal)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Checkbox
+              checked={payConfirmed}
+              onChange={(e) => setPayConfirmed(e.target.checked)}
+              style={{ marginBottom: 14 }}
+            >
+              Confirmei os itens e desejo seguir para o pagamento
+            </Checkbox>
+
             <Typography.Paragraph type="secondary">
               Escolha a forma de pagamento (simulado — sem cobrança real).
             </Typography.Paragraph>
@@ -958,6 +1366,7 @@ export function PublicMenuPage() {
               <Button
                 size="large"
                 loading={submitting}
+                disabled={!payConfirmed}
                 icon={<Banknote size={18} />}
                 onClick={() => void payOrder('PIX')}
                 style={{ height: 52, justifyContent: 'flex-start' }}
@@ -967,6 +1376,7 @@ export function PublicMenuPage() {
               <Button
                 size="large"
                 loading={submitting}
+                disabled={!payConfirmed}
                 icon={<CreditCard size={18} />}
                 onClick={() => void payOrder('CARD')}
                 style={{ height: 52, justifyContent: 'flex-start' }}
@@ -976,6 +1386,7 @@ export function PublicMenuPage() {
               <Button
                 size="large"
                 loading={submitting}
+                disabled={!payConfirmed}
                 icon={<Banknote size={18} />}
                 onClick={() => void payOrder('CASH')}
                 style={{ height: 52, justifyContent: 'flex-start' }}
@@ -999,7 +1410,9 @@ export function PublicMenuPage() {
               {paidOrder.tableNumber != null ? ` · Mesa ${paidOrder.tableNumber}` : ''}
             </Typography.Paragraph>
             <Typography.Paragraph type="secondary">
-              Seu pedido entrou na fila da cozinha. Acompanhe o status com a equipe do salão.
+              {payAtTable
+                ? 'Seu pedido entrou na fila da cozinha. Quando terminar, use Fechar conta para chamar o atendente e pagar.'
+                : 'Seu pedido entrou na fila da cozinha. Acompanhe o status com a equipe do salão.'}
             </Typography.Paragraph>
             <Button type="primary" size="large" block onClick={resetAfterSuccess}>
               Continuar no cardápio

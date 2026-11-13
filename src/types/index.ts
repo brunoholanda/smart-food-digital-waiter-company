@@ -40,10 +40,53 @@ export type PaymentMethod = 'PIX' | 'CARD' | 'CASH';
 
 export type ActiveKitchenStatus = 'QUEUED' | 'PREPARING' | 'READY';
 
+export type ServiceCallReason = 'CHANGE_ORDER' | 'CANCEL_ORDER' | 'CLOSE_BILL';
+
+export type ServiceCallStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+
+export type PaymentCollectionMode = 'PLATFORM' | 'RESTAURANT_TABLE';
+
 export interface KitchenStats {
   queued: number;
   preparing: number;
   ready: number;
+}
+
+export interface ServiceCall {
+  id: string;
+  restaurantId?: string;
+  tableId: string;
+  tableNumber: number;
+  reason: ServiceCallReason;
+  message?: string | null;
+  status: ServiceCallStatus;
+  relatedOrderId?: string | null;
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  table?: {
+    id: string;
+    number: number;
+    label?: string | null;
+    code: string;
+  } | null;
+}
+
+export interface CreateServiceCallPayload {
+  restaurantSlug: string;
+  tableCode: string;
+  reason: ServiceCallReason;
+  message?: string;
+  relatedOrderId?: string;
+}
+
+export interface UpdateKitchenOrderPayload {
+  notes?: string;
+  items?: Array<{
+    id: string;
+    quantity: number;
+    notes?: string;
+  }>;
 }
 
 export interface KitchenOrderItem {
@@ -53,6 +96,7 @@ export interface KitchenOrderItem {
   notes?: string | null;
   variationName?: string | null;
   addonsJson?: string[] | null;
+  unitPrice?: number | string;
   lineTotal: number | string;
 }
 
@@ -62,6 +106,7 @@ export interface KitchenOrder {
   tableNumber?: number | null;
   customerName?: string | null;
   notes?: string | null;
+  status?: OrderStatus;
   kitchenStatus: KitchenStatus | null;
   paymentMethod?: PaymentMethod | null;
   total: number | string;
@@ -203,6 +248,7 @@ export interface Restaurant {
   acceptsDineIn: boolean;
   isPublished: boolean;
   tableOrderingEnabled?: boolean;
+  paymentCollectionMode?: PaymentCollectionMode;
   ownerId: string;
   openingHours?: OpeningHour[];
   categories?: MenuCategory[];
@@ -315,6 +361,64 @@ export interface UpdateRestaurantPayload {
   acceptsPickup?: boolean;
   acceptsDineIn?: boolean;
   isPublished?: boolean;
+  paymentCollectionMode?: PaymentCollectionMode;
+}
+
+export interface TableBill {
+  tableId: string;
+  tableNumber: number;
+  paymentCollectionMode?: PaymentCollectionMode | null;
+  openOrderCount: number;
+  total: number | string;
+  orders: Array<{
+    id: string;
+    code: string;
+    status: OrderStatus;
+    kitchenStatus?: KitchenStatus | null;
+    total: number | string;
+    customerName?: string | null;
+    createdAt: string;
+    items: Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      notes?: string | null;
+      lineTotal: number | string;
+    }>;
+  }>;
+}
+
+export type TableSessionStatus = 'IDLE' | 'ACTIVE' | 'READY_TO_PAY';
+
+export interface TableStatusOrder {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  kitchenStatus?: KitchenStatus | null;
+  total: number | string;
+  customerName?: string | null;
+  queuedAt?: string | null;
+  preparingAt?: string | null;
+  readyAt?: string | null;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    notes?: string | null;
+    lineTotal: number | string;
+  }>;
+}
+
+export interface TableStatus {
+  tableId: string;
+  tableNumber: number;
+  paymentCollectionMode?: PaymentCollectionMode | null;
+  sessionStatus: TableSessionStatus;
+  hasOpenBill: boolean;
+  openBillTotal: number | string;
+  activeOrderCount: number;
+  orders: TableStatusOrder[];
 }
 
 export interface UpdateOpeningHoursPayload {
@@ -344,6 +448,7 @@ export interface TablesListResponse {
   slug: string;
   tradeName: string;
   tableOrderingEnabled: boolean;
+  paymentCollectionMode?: PaymentCollectionMode;
   menuUrl: string;
   tables: Table[];
 }
@@ -353,6 +458,7 @@ export interface PublicTableContext {
   slug: string;
   tradeName: string;
   tableOrderingEnabled: boolean;
+  paymentCollectionMode?: PaymentCollectionMode;
   table: {
     id: string;
     number: number;

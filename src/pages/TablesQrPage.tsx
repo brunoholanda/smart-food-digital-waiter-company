@@ -222,12 +222,19 @@ export function TablesQrPage() {
             <Typography.Text code style={{ wordBreak: 'break-all' }}>
               {shortMenuPath}
             </Typography.Text>
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Tag color={data?.tableOrderingEnabled ? 'success' : 'default'}>
                 {data?.tableOrderingEnabled
                   ? 'Pedidos por mesa ativos (use os QRs das mesas)'
                   : 'Crie mesas para gerar links de pedido'}
               </Tag>
+              {data?.tableOrderingEnabled ? (
+                <Tag color="processing">
+                  {data.paymentCollectionMode === 'RESTAURANT_TABLE'
+                    ? 'Pagamento na mesa (fechar conta)'
+                    : 'Pagamento na plataforma (ao finalizar)'}
+                </Tag>
+              ) : null}
             </div>
           </div>
         </div>
@@ -337,7 +344,6 @@ export function TablesQrPage() {
             <div className="sf-print-card__brand">{data?.tradeName ?? restaurant.tradeName}</div>
             <div className="sf-print-card__title">Cardápio</div>
             <QRCodeSVG value={menuUrl} size={160} level="M" />
-            <div className="sf-print-card__url">{shortMenuPath}</div>
             <div className="sf-print-card__hint">Somente visualização</div>
           </div>
           {tables
@@ -352,9 +358,6 @@ export function TablesQrPage() {
                   <div className="sf-print-card__label">{table.label}</div>
                 ) : null}
                 <QRCodeSVG value={table.menuUrl} size={160} level="M" />
-                <div className="sf-print-card__url">
-                  /m/{data?.slug}/mesa/{table.code}
-                </div>
                 <div className="sf-print-card__hint">Escaneie para pedir nesta mesa</div>
               </div>
             ))}

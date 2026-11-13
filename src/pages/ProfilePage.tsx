@@ -77,6 +77,7 @@ export function ProfilePage() {
       acceptsPickup: restaurant.acceptsPickup,
       acceptsDineIn: restaurant.acceptsDineIn,
       isPublished: restaurant.isPublished,
+      paymentCollectionMode: restaurant.paymentCollectionMode ?? 'PLATFORM',
     });
 
     const mapped: HoursRow[] = Array.from({ length: 7 }, (_, dayOfWeek) => {
@@ -329,6 +330,44 @@ export function ProfilePage() {
               <Switch disabled={!approved} />
             </Form.Item>
           </div>
+
+          <Typography.Title level={5} style={{ marginTop: 8 }}>
+            Pagamento nos pedidos da mesa
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+            Escolha se o cliente paga na plataforma ao finalizar cada pedido, ou se o
+            restaurante recebe na mesa ao fechar a conta.
+          </Typography.Paragraph>
+          <Form.Item
+            name="paymentCollectionMode"
+            label="Como e quando cobrar"
+            rules={[{ required: true, message: 'Selecione o modo de pagamento' }]}
+          >
+            <Select
+              options={[
+                {
+                  value: 'PLATFORM',
+                  label: 'Plataforma — cliente paga ao finalizar o pedido',
+                },
+                {
+                  value: 'RESTAURANT_TABLE',
+                  label: 'Restaurante — fecha a conta na mesa com o atendente',
+                },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.paymentCollectionMode !== next.paymentCollectionMode}>
+            {() => {
+              const mode = form.getFieldValue('paymentCollectionMode');
+              return (
+                <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+                  {mode === 'RESTAURANT_TABLE'
+                    ? 'Pedidos vão direto para a cozinha. O cliente usa “Fechar conta” e o atendente confere o valor e recebe o pagamento.'
+                    : 'Cada pedido passa pelo pagamento (PIX/cartão/dinheiro simulado) antes de entrar na fila da cozinha. A plataforma processa e repassa.'}
+                </Typography.Paragraph>
+              );
+            }}
+          </Form.Item>
 
           <Button type="primary" htmlType="submit" loading={saving} size="large">
             Salvar perfil

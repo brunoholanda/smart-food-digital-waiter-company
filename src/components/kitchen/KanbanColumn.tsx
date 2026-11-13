@@ -7,8 +7,10 @@ interface KanbanColumnProps {
   count: number;
   orders: KitchenOrder[];
   flashIds: Set<string>;
+  highlightedTableNumbers?: Set<number>;
   updatingId: string | null;
   onUpdateStatus: (orderId: string, status: KitchenStatus) => Promise<void>;
+  onEditOrder?: (order: KitchenOrder) => void;
 }
 
 export function KanbanColumn({
@@ -17,8 +19,10 @@ export function KanbanColumn({
   count,
   orders,
   flashIds,
+  highlightedTableNumbers,
   updatingId,
   onUpdateStatus,
+  onEditOrder,
 }: KanbanColumnProps) {
   return (
     <section className={`kanban-column accent-${accent}`}>
@@ -30,15 +34,22 @@ export function KanbanColumn({
         {orders.length === 0 ? (
           <p className="kanban-empty">Nenhum pedido</p>
         ) : (
-          orders.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              flashing={flashIds.has(order.id)}
-              updating={updatingId === order.id}
-              onUpdateStatus={onUpdateStatus}
-            />
-          ))
+          orders.map((order) => {
+            const mesa = order.tableNumber ?? order.table?.number;
+            const highlighted =
+              mesa != null && Boolean(highlightedTableNumbers?.has(mesa));
+            return (
+              <OrderCard
+                key={order.id}
+                order={order}
+                flashing={flashIds.has(order.id)}
+                highlighted={highlighted}
+                updating={updatingId === order.id}
+                onUpdateStatus={onUpdateStatus}
+                onEditOrder={onEditOrder}
+              />
+            );
+          })
         )}
       </div>
     </section>
