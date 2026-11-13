@@ -307,6 +307,44 @@ body.kitchen-mode {
   border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
+.table-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.18), rgba(28, 25, 23, 0.55));
+}
+
+.table-filter-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.table-filter-banner__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.table-filter-banner__text strong {
+  font-size: 1.05rem;
+  color: var(--kitchen-cream);
+}
+
+.table-filter-banner .ant-btn {
+  min-height: 48px;
+  min-width: 180px;
+}
+
 .service-calls-panel {
   margin-bottom: 14px;
   border-radius: 18px;

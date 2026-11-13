@@ -27,6 +27,7 @@ import {
   Star,
   Banknote,
   WheatOff,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
@@ -169,6 +170,13 @@ export function PublicMenuPage() {
     }, 8000);
     return () => window.clearInterval(id);
   }, [tableOrdering, tableCode, slug]);
+
+  useEffect(() => {
+    document.body.classList.toggle('sf-item-drawer-open', Boolean(selectedItem));
+    return () => {
+      document.body.classList.remove('sf-item-drawer-open');
+    };
+  }, [selectedItem]);
 
   const featured = useMemo(
     () =>
@@ -939,31 +947,52 @@ export function PublicMenuPage() {
         open={Boolean(selectedItem)}
         onClose={() => setSelectedItem(null)}
         placement="bottom"
-        height="auto"
+        height="min(88vh, 720px)"
         title={null}
+        closable={false}
+        maskClosable
+        keyboard
+        destroyOnHidden
+        rootClassName="sf-item-drawer"
+        zIndex={1200}
         styles={{
-          body: { padding: 0 },
+          body: {
+            padding: 0,
+            maxHeight: 'min(88vh, 720px)',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+          },
           wrapper: { maxWidth: 720, margin: '0 auto' },
+          mask: { zIndex: 1199 },
         }}
       >
         {selectedItem ? (
-          <div>
+          <div className="sf-item-drawer__content">
+            <button
+              type="button"
+              className="sf-item-drawer__close"
+              aria-label="Fechar e voltar ao cardápio"
+              onClick={() => setSelectedItem(null)}
+            >
+              <X size={20} strokeWidth={2.5} />
+            </button>
+
             {selectedItem.imageUrl ? (
               <img
                 src={resolveImageUrl(selectedItem.imageUrl)}
                 alt={selectedItem.name}
-                style={{ width: '100%', height: 220, objectFit: 'cover' }}
+                style={{ width: '100%', height: 200, objectFit: 'cover', display: 'block' }}
               />
             ) : (
               <div
                 style={{
-                  height: 140,
+                  height: 120,
                   background: 'linear-gradient(135deg,#1c1917,#ff6b35)',
                 }}
               />
             )}
-            <div style={{ padding: 20 }}>
-              <h3 className="sf-display" style={{ fontSize: 26, margin: 0 }}>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <h3 className="sf-display" style={{ fontSize: 26, margin: 0, paddingRight: 36 }}>
                 {selectedItem.name}
               </h3>
               <div
@@ -1051,24 +1080,38 @@ export function PublicMenuPage() {
                   <Button type="primary" size="large" block onClick={addToCart}>
                     Adicionar ao pedido
                   </Button>
+                  <Button
+                    size="large"
+                    block
+                    style={{ marginTop: 8 }}
+                    onClick={() => setSelectedItem(null)}
+                  >
+                    Voltar ao cardápio
+                  </Button>
                 </div>
-              ) : wa ? (
-                <Button
-                  type="primary"
-                  size="large"
-                  block
-                  style={{ marginTop: 8 }}
-                  icon={<MessageCircle size={18} />}
-                  href={whatsappLink(
-                    wa,
-                    `Olá! Quero pedir: ${selectedItem.name} (${formatCurrency(selectedItem.promotionalPrice ?? selectedItem.basePrice)})`,
-                  )}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Pedir este item
-                </Button>
-              ) : null}
+              ) : (
+                <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+                  {wa ? (
+                    <Button
+                      type="primary"
+                      size="large"
+                      block
+                      icon={<MessageCircle size={18} />}
+                      href={whatsappLink(
+                        wa,
+                        `Olá! Quero pedir: ${selectedItem.name} (${formatCurrency(selectedItem.promotionalPrice ?? selectedItem.basePrice)})`,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Pedir este item
+                    </Button>
+                  ) : null}
+                  <Button size="large" block onClick={() => setSelectedItem(null)}>
+                    Voltar ao cardápio
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ) : null}

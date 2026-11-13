@@ -1,5 +1,5 @@
 import { Button, Spin, Tag, Tooltip } from 'antd';
-import { RefreshCw, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { FilterX, RefreshCw, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { EditOrderModal } from '../../components/kitchen/EditOrderModal';
 import { KanbanColumn } from '../../components/kitchen/KanbanColumn';
@@ -77,16 +77,6 @@ export function BoardPage() {
           >
             {connected ? 'Ao vivo' : 'Reconectando…'}
           </Tag>
-          {focusTable != null ? (
-            <Tag
-              color="warning"
-              closable
-              onClose={() => setFocusTable(null)}
-              style={{ marginInlineEnd: 0 }}
-            >
-              Filtrando mesa {focusTable}
-            </Tag>
-          ) : null}
           <Tooltip
             title={
               soundEnabled
@@ -121,6 +111,23 @@ export function BoardPage() {
           </Button>
         </div>
       </div>
+
+      {focusTable != null ? (
+        <div className="table-filter-banner">
+          <div className="table-filter-banner__text">
+            <span className="table-filter-banner__label">Filtro ativo</span>
+            <strong>Mostrando só a mesa {focusTable}</strong>
+          </div>
+          <Button
+            size="large"
+            type="primary"
+            icon={<FilterX size={18} />}
+            onClick={() => setFocusTable(null)}
+          >
+            Ver todas as mesas
+          </Button>
+        </div>
+      ) : null}
 
       <ServiceCallsPanel
         calls={serviceCalls}
